@@ -1,5 +1,8 @@
 const taskService = require("../services/task-service");
-
+const { countInspector } = require("../utils/countInspector");
+const { selectedScore } = require("../utils/selectedScore");
+const { specScore } = require("../utils/specScore");
+const { randomItems } = require("../utils/randomItems");
 exports.getInspector = async (req, res, next) => {
   try {
     const unShufffleUserIdArr = req.body.userId;
@@ -43,9 +46,19 @@ exports.getInspector = async (req, res, next) => {
         const inspectorCountSorted = Object.values(summaryTaskInspector).sort(
           (a, b) => a - b
         );
+        const inspectorCountSortedSet = inspectorCountSorted.reduce(
+          (acc, cur) => {
+            if (cur in acc) {
+              return acc;
+            }
+            acc.push(cur);
+            return acc;
+          },
+          []
+        );
 
         // try selected from least count to higher
-        for (let countValue of inspectorCountSorted) {
+        for (let countValue of inspectorCountSortedSet) {
           //  select the  inspector to be candidate inspector
           const candidateInspector = [];
           for ([key, value] of Object.entries(summaryTaskInspector)) {
@@ -96,5 +109,54 @@ exports.getInspector = async (req, res, next) => {
     res.json(inspectorEachUser);
   } catch (err) {
     res.json(err);
+  }
+};
+
+exports.getMultiInspector = async (req, res, next) => {
+  try {
+    const unShufffleUserIdArr = req.body.userId;
+    const numberPerGroup = req.body.number;
+
+    const taskEachUser = await taskService.getTaskEachUser(unShufffleUserIdArr); // get history task of  user
+    let cInspector = countInspector(unShufffleUserIdArr, taskEachUser);
+
+    let sScore = selectedScore(cInspector);
+    let spScore = specScore(sScore);
+    let usedInspector = {};
+    let maxUsedInspector = [];
+    const sumSelectedInspector = {};
+    for (user in spScore) {
+      const spScoreEachUser = spScore[user];
+      for (inspector of maxUsedInspector) {
+        spScoreEachUser[inspector] = 0;
+      }
+      const selectedInspector = randomItems(spScoreEachUser, numberPerGroup);
+      for (inspector of selectedInspector) {
+        if (inspector in usedInspector) {
+          usedInspector[inspector] += 1;
+        } else {
+          usedInspector[inspector] = 1;
+        }
+        if (usedInspector[inspector] >= numberPerGroup) {
+          maxUsedInspector.push(inspector);
+        }
+      }
+      sumSelectedInspector[user] = selectedInspector;
+    }
+    const rs = {};
+    for (user in sumSelectedInspector) {
+      const inpecstorStat = [];
+      for (inspector of sumSelectedInspector[user]) {
+        inpecstorStat.push({
+          inspectorId: inspector,
+          matchHistory: cInspector[user][inspector],
+        });
+      }
+      rs[user] = inpecstorStat;
+    }
+
+    res.json(rs);
+  } catch (err) {
+    console.log(err);
   }
 };
